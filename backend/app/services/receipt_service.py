@@ -1,20 +1,23 @@
 """Expense business logic (Supabase table: expenses)."""
-from fastapi import File, HTTPException, UploadFile
+import json
+import re
+from fastapi import HTTPException, UploadFile
 from pydantic import ValidationError
 from app.supabase_client import get_supabase
-from backend.app.schema.receipt import ReceiptCreateResponse, ReceiptExtracted
+from app.schema.receipt import ReceiptCreateResponse, ReceiptExtracted
+from google import genai
+from google.genai import types
 
 ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/jpg", "image/heic"}
+
+client = genai.Client()
 
 def list_receipts():
     """Return all expenses, newest first."""
     supabase = get_supabase()
 
     response = supabase.table("receipts").select("*").order("created_at", desc=True).execute()
-    if not response.data:
-        raise RuntimeError("Error fetching list_receipts data") # should probably replace with HTTP status codes
-
-    return response.data
+    return response.data if response.data is not None else []
 
 
 def create_receipt_with_input(payload: ReceiptExtracted):
@@ -23,7 +26,7 @@ def create_receipt_with_input(payload: ReceiptExtracted):
 
     receipt_data_to_insert = {
         "merchant": payload.merchant,
-        "data_of_transaction": payload.data_of_transaction.isoformat() if payload.data_of_transaction else None,
+        "date_of_transaction": payload.date_of_transaction.isoformat() if payload.date_of_transaction else None,
         "category": payload.category,
         "subtotal": payload.subtotal,
         "tax": payload.tax,
@@ -57,12 +60,12 @@ def create_receipt_with_input(payload: ReceiptExtracted):
     )
 
 
-async def extract_receipt_image(image: UploadFile = File(...)):
+async def extract_receipt_image(image: UploadFile)-> ReceiptExtracted:
     """Extract the receipt image and output a JSON schema."""
     if image.content_type not in ALLOWED_IMAGE_TYPES:
         raise HTTPException(
             status_code=400,
-            detail="Only JPEG, PNG, and WEBP images are allowed.",
+            detail="Only JPEG, PNG, JPG, and HEIC images are allowed.",
         )
     
     file_bytes = await image.read()
@@ -72,17 +75,61 @@ async def extract_receipt_image(image: UploadFile = File(...)):
             detail="Uploaded image is empty.",
         )
     
-    raw_extracted_gemini_receipt_json = await gemini_extract_image(file_bytes=file_bytes)
+    raw_json_str = await _gemini_extract_receipt_json(
+        file_bytes=file_bytes, filetype=image.content_type
+    )
+    # Strip markdown code blocks if Gemini wrapped the JSON
+    json_str = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw_json_str).strip()
     try:
-        validated_json = ReceiptExtracted.model_validate(raw_extracted_gemini_receipt_json);
-    except ValidationError as e:
+        validated = ReceiptExtracted.model_validate_json(json_str)
+    except ValidationError:
         raise HTTPException(
             status_code=422,
             detail="Returned Gemini model JSON output is invalid and does not match the required schema.",
         )
 
-    return validated_json
+    return validated
 
-async def gemini_extract_image(file_bytes: bytes) -> ReceiptExtracted:
-    pass
+
+async def _gemini_extract_receipt_json(file_bytes: bytes, filetype: str) -> str:
+    prompt = """
+    Extract receipt information from this image.
+    Return STRICT JSON with this schema:
+
+    {
+        "merchant": string,
+        "date_of_transaction": "YYYY-MM-DD",
+        "category": string,
+        "subtotal": number,
+        "tax": number,
+        "total": number,
+        "items_purchased": [
+            {
+            "name": string,
+            "quantity": number,
+            "unit_price": number,
+            "total_price": number
+            }
+        ]
+    }
+
+    RULES:
+    - Return ONLY JSON
+    - No explanation
+    - NO MARKDOWN
+    """
+    response = client.models.generate_content(
+        model="gemini-2.5-flash-preview-05-20",
+        contents=[
+            types.Part.from_bytes(
+                data=file_bytes,
+                mime_type=filetype
+            ),
+            prompt
+        ]
+    )
+
+    return response.text or "{}"
+
+
 
