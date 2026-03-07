@@ -16,7 +16,7 @@ def list_receipts():
     """Return all expenses, newest first."""
     supabase = get_supabase()
 
-    response = supabase.table("receipts").select("*").order("created_at", desc=True).execute()
+    response = supabase.table("receipts").select("*").order("date_of_transaction", desc=True).execute()
     return response.data if response.data is not None else []
 
 
@@ -49,10 +49,10 @@ def create_receipt_with_input(payload: ReceiptExtracted):
             "unit_price": item.unit_price,
             "total_price": item.total_price
         });
-    
-    response = supabase.table("receipt_items").insert(receipt_items_to_insert).execute();
-    if not response.data:
-        raise RuntimeError("Failed to insert items in to receipt_items table")
+    if receipt_items_to_insert:
+        response = supabase.table("receipt_items").insert(receipt_items_to_insert).execute();
+        if not response.data:
+            raise RuntimeError("Failed to insert items in to receipt_items table")
 
     return ReceiptCreateResponse(
         receipt_id=receipt_id,
@@ -80,6 +80,8 @@ async def extract_receipt_image(image: UploadFile)-> ReceiptExtracted:
     )
     # Strip markdown code blocks if Gemini wrapped the JSON
     json_str = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw_json_str).strip()
+    # print("hello" + json_str)
+    
     try:
         validated = ReceiptExtracted.model_validate_json(json_str)
     except ValidationError:
@@ -117,9 +119,18 @@ async def _gemini_extract_receipt_json(file_bytes: bytes, filetype: str) -> str:
     - Return ONLY JSON
     - No explanation
     - NO MARKDOWN
+    - For categories, you can only choose between these ones:
+        - Groceries
+        - Dining
+        - Transportation
+        - Shopping
+        - Entertainment
+        - Travel
+        - Utilities
+        - Other
     """
     response = client.models.generate_content(
-        model="gemini-2.5-flash-preview-05-20",
+        model="gemini-2.5-flash",
         contents=[
             types.Part.from_bytes(
                 data=file_bytes,

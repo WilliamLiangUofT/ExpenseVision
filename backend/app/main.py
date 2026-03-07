@@ -10,6 +10,11 @@ app = FastAPI(
     version="1.0.0",
 )
 
+@app.middleware("http")
+async def log_requests(request, call_next):
+    print(f"{request.method} {request.url.path}")
+    return await call_next(request)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
