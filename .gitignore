@@ -43,3 +43,8 @@ app-example
 /android
 
 .vscode
+
+.__pycache__
+*.py[cod]
+
+.env

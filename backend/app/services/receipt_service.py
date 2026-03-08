@@ -1,7 +1,7 @@
 """Expense business logic (Supabase table: expenses)."""
 from fastapi import File, HTTPException, UploadFile
 from pydantic import ValidationError
-from app.supabase_client import get_supabase
+from backend.app.supabase_client import get_supabase
 from backend.app.schema.receipt import ReceiptCreateResponse, ReceiptExtracted
 
 ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/jpg", "image/heic"}
@@ -45,9 +45,9 @@ def create_receipt_with_input(payload: ReceiptExtracted):
             "quantity": item.quantity,
             "unit_price": item.unit_price,
             "total_price": item.total_price
-        });
+        })
     
-    response = supabase.table("receipt_items").insert(receipt_items_to_insert).execute();
+    response = supabase.table("receipt_items").insert(receipt_items_to_insert).execute()
     if not response.data:
         raise RuntimeError("Failed to insert items in to receipt_items table")
 

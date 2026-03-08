@@ -1,6 +1,7 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
+    Alert,
     Modal,
     SafeAreaView,
     ScrollView,
@@ -18,67 +19,84 @@ type Category = {
   spent: number;
 };
 
-const initialCategories: Category[] = [
-  { name: 'Groceries', icon: 'cart-outline', percent: '20', spent: 220 },
-  { name: 'Dining', icon: 'food-outline', percent: '10', spent: 160 },
-  { name: 'Transportation', icon: 'car-outline', percent: '10', spent: 90 },
-  { name: 'Shopping', icon: 'shopping-outline', percent: '15', spent: 140 },
+type BudgetComparisonCategory = {
+  category: string;
+  percent: number;
+  allocated_amount: number;
+  spent: number;
+  remaining: number;
+};
+
+type BudgetComparisonResponse = {
+  id: number;
+  month: string;
+  total_budget: number;
+  total_spent: number;
+  categories: BudgetComparisonCategory[];
+};
+
+const BASE_URL = 'http://127.0.0.1:8000/api';
+// If using Expo Go on a physical phone, replace with your computer's local IP:
+// const BASE_URL = 'http://192.168.1.100:8000';
+
+const CATEGORY_ICONS: Record<
+  string,
+  keyof typeof MaterialCommunityIcons.glyphMap
+> = {
+  Groceries: 'cart-outline',
+  Dining: 'food-outline',
+  Transportation: 'car-outline',
+  Shopping: 'shopping-outline',
+  Entertainment: 'movie-open-outline',
+  Travel: 'airplane',
+  Utilities: 'flash-outline',
+  Other: 'apps',
+};
+
+const EMPTY_CATEGORIES: Category[] = [
+  { name: 'Groceries', icon: 'cart-outline', percent: '0', spent: 0 },
+  { name: 'Dining', icon: 'food-outline', percent: '0', spent: 0 },
+  { name: 'Transportation', icon: 'car-outline', percent: '0', spent: 0 },
+  { name: 'Shopping', icon: 'shopping-outline', percent: '0', spent: 0 },
   {
     name: 'Entertainment',
     icon: 'movie-open-outline',
-    percent: '10',
-    spent: 75,
+    percent: '0',
+    spent: 0,
   },
-  { name: 'Travel', icon: 'airplane', percent: '10', spent: 40 },
-  { name: 'Utilities', icon: 'flash-outline', percent: '15', spent: 180 },
-  { name: 'Other', icon: 'apps', percent: '10', spent: 60 },
+  { name: 'Travel', icon: 'airplane', percent: '0', spent: 0 },
+  { name: 'Utilities', icon: 'flash-outline', percent: '0', spent: 0 },
+  { name: 'Other', icon: 'apps', percent: '0', spent: 0 },
 ];
 
+const normalizeCategory = (value: string) => value.trim().toLowerCase();
 export default function BudgetScreen() {
-  // actual budget that the app uses
-  const [totalBudget, setTotalBudget] = useState('2000');
+  const [budgetId, setBudgetId] = useState<number | null>(null);
+  const [totalBudget, setTotalBudget] = useState('0');
   const [savedCategories, setSavedCategories] =
-    useState<Category[]>(initialCategories);
+    useState<Category[]>(EMPTY_CATEGORIES);
 
   const [modalVisible, setModalVisible] = useState(false);
-
-  //   draft state budget that user edits inside the "edit" button
-  const [draftBudget, setDraftBudget] = useState(totalBudget);
+  const [draftBudget, setDraftBudget] = useState('0');
   const [draftCategories, setDraftCategories] =
-    useState<Category[]>(savedCategories);
+    useState<Category[]>(EMPTY_CATEGORIES);
+
+  const [loading, setLoading] = useState(false);
+
+  // Your backend routes are using `date`, so pass full YYYY-MM-01
+  const currentMonth = '2026-03-01';
 
   const parsedTotalBudget = parseFloat(totalBudget) || 0;
 
-  //  spent
   const totalSpent = useMemo(() => {
     return savedCategories.reduce((sum, cat) => sum + cat.spent, 0);
   }, [savedCategories]);
 
   const totalAllocated = parsedTotalBudget;
-
-  //   remaining
   const totalRemaining = Math.max(totalAllocated - totalSpent, 0);
   const overallPercent =
     totalAllocated > 0 ? Math.round((totalSpent / totalAllocated) * 100) : 0;
 
-  // copy real budget into the draft
-  // copy real categories into draft categories
-  // show the modal so that budget editing popup appears
-  const openManageModal = () => {
-    setDraftBudget(totalBudget);
-    setDraftCategories(savedCategories.map((cat) => ({ ...cat })));
-    setModalVisible(true);
-  };
-
-  //   when user enters a percantage input it updates draft categories
-  const updateDraftPercent = (index: number, value: string) => {
-    const cleaned = value.replace(/[^0-9.]/g, '');
-    const updated = [...draftCategories];
-    updated[index].percent = cleaned;
-    setDraftCategories(updated);
-  };
-
-  // calculates total % allocated to ensure that it does not exceed 100%
   const draftTotalPercent = useMemo(() => {
     return draftCategories.reduce(
       (sum, cat) => sum + (parseFloat(cat.percent) || 0),
@@ -88,18 +106,115 @@ export default function BudgetScreen() {
 
   const draftBudgetNumber = parseFloat(draftBudget) || 0;
 
+  const canSave = draftBudgetNumber > 0 && draftTotalPercent <= 100;
+
   const getAllocatedAmount = (percent: string, budget: number) => {
     return ((parseFloat(percent) || 0) / 100) * budget;
   };
 
-  //   avoids invalid budgets
-  const canSave = draftBudgetNumber > 0 && draftTotalPercent <= 100;
+  const loadBudgetData = async () => {
+    try {
+      setLoading(true);
 
-  const handleSave = () => {
+      const response = await fetch(
+        `${BASE_URL}/budgets/comparison/${currentMonth}`,
+      );
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch budget comparison');
+      }
+
+      const data: BudgetComparisonResponse = await response.json();
+
+      setBudgetId(data.id);
+      setTotalBudget(String(data.total_budget));
+
+      const mappedCategories: Category[] = EMPTY_CATEGORIES.map((baseCat) => {
+        const backendCat = data.categories.find(
+          (cat) =>
+            normalizeCategory(cat.category) === normalizeCategory(baseCat.name),
+        );
+
+        return {
+          name: baseCat.name,
+          icon: CATEGORY_ICONS[baseCat.name] ?? 'apps',
+          percent: backendCat ? String(backendCat.percent) : '0',
+          spent: backendCat ? backendCat.spent : 0,
+        };
+      });
+
+      setSavedCategories(mappedCategories);
+    } catch (error) {
+      console.error(error);
+      Alert.alert('Error', 'Could not load budget data.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadBudgetData();
+  }, []);
+
+  const openManageModal = () => {
+    setDraftBudget(totalBudget);
+    setDraftCategories(savedCategories.map((cat) => ({ ...cat })));
+    setModalVisible(true);
+  };
+
+  const updateDraftPercent = (index: number, value: string) => {
+    const cleaned = value.replace(/[^0-9.]/g, '');
+    const updated = [...draftCategories];
+    updated[index] = { ...updated[index], percent: cleaned };
+    setDraftCategories(updated);
+  };
+
+  const handleSave = async () => {
     if (!canSave) return;
-    setTotalBudget(draftBudget);
-    setSavedCategories(draftCategories);
-    setModalVisible(false);
+
+    try {
+      const payload = {
+        month: currentMonth,
+        total_budget: draftBudgetNumber,
+        categories: draftCategories.map((cat) => ({
+          category: cat.name,
+          percent: parseFloat(cat.percent) || 0,
+        })),
+      };
+
+      const url =
+        budgetId === null
+          ? `${BASE_URL}/budgets/`
+          : `${BASE_URL}/budgets/${budgetId}`;
+
+      const method = budgetId === null ? 'POST' : 'PUT';
+
+      console.log('Saving budget...');
+      console.log('budgetId =', budgetId);
+      console.log('method =', method);
+      console.log('url =', url);
+      console.log('payload =', payload);
+
+      const response = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      const text = await response.text();
+      console.log('status = ', response.status);
+      console.log('response text =', text);
+
+      if (!response.ok) {
+        throw new Error(text || 'Failed to update budget');
+      }
+
+      setModalVisible(false);
+      await loadBudgetData();
+    } catch (error) {
+      console.error(error);
+      Alert.alert('Error', 'Could not save budget changes.');
+    }
   };
 
   return (
@@ -120,7 +235,9 @@ export default function BudgetScreen() {
 
         <View style={styles.heroCard}>
           <Text style={styles.heroLabel}>Monthly Budget</Text>
-          <Text style={styles.heroAmount}>${parsedTotalBudget.toFixed(0)}</Text>
+          <Text style={styles.heroAmount}>
+            {loading ? 'Loading...' : `$${parsedTotalBudget.toFixed(0)}`}
+          </Text>
 
           <View style={styles.heroProgressTrack}>
             <View
@@ -325,10 +442,13 @@ export default function BudgetScreen() {
 
 const BG = '#f8fafc';
 const CARD = '#ffffff';
-const BORDER = '#e5e7eb';
-const TEXT = '#111827';
-const MUTED = '#6b7280';
-const PURPLE = '#8b5cf6';
+const PRIMARY = '#8b5cf6';
+const PRIMARY_SOFT = '#f3e8ff';
+const TEXT = '#0f172a';
+const MUTED = '#64748b';
+const BORDER = '#e2e8f0';
+const SUCCESS = '#16a34a';
+const DANGER = '#ef4444';
 
 const styles = StyleSheet.create({
   container: {
@@ -341,8 +461,8 @@ const styles = StyleSheet.create({
   },
   headerRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    justifyContent: 'space-between',
     marginBottom: 18,
   },
   pageTitle: {
@@ -351,35 +471,34 @@ const styles = StyleSheet.create({
     color: TEXT,
   },
   manageButton: {
-    backgroundColor: '#f3f4f6',
-    paddingHorizontal: 16,
+    backgroundColor: PRIMARY_SOFT,
+    paddingHorizontal: 14,
     paddingVertical: 10,
     borderRadius: 14,
   },
   manageButtonText: {
-    color: '#374151',
+    color: PRIMARY,
     fontWeight: '700',
-    fontSize: 13,
+    fontSize: 14,
   },
   heroCard: {
     backgroundColor: CARD,
     borderRadius: 24,
-    padding: 18,
+    padding: 20,
+    marginBottom: 18,
     borderWidth: 1,
     borderColor: BORDER,
-    marginBottom: 16,
   },
   heroLabel: {
-    fontSize: 14,
     color: MUTED,
-    fontWeight: '600',
+    fontSize: 14,
+    marginBottom: 8,
   },
   heroAmount: {
     fontSize: 34,
     fontWeight: '800',
     color: TEXT,
-    marginTop: 6,
-    marginBottom: 14,
+    marginBottom: 16,
   },
   heroProgressTrack: {
     height: 12,
@@ -390,7 +509,7 @@ const styles = StyleSheet.create({
   },
   heroProgressFill: {
     height: '100%',
-    backgroundColor: PURPLE,
+    backgroundColor: PRIMARY,
     borderRadius: 999,
   },
   heroStatsRow: {
@@ -398,13 +517,13 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   heroStatLabel: {
-    fontSize: 12,
+    fontSize: 13,
     color: MUTED,
     marginBottom: 4,
   },
   heroStatValue: {
-    fontSize: 18,
-    fontWeight: '800',
+    fontSize: 16,
+    fontWeight: '700',
     color: TEXT,
   },
   sectionCard: {
@@ -415,15 +534,15 @@ const styles = StyleSheet.create({
     borderColor: BORDER,
   },
   sectionTitle: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '800',
     color: TEXT,
-    marginBottom: 12,
+    marginBottom: 14,
   },
   categoryCard: {
     paddingVertical: 14,
-    borderTopWidth: 1,
-    borderTopColor: '#f1f5f9',
+    borderBottomWidth: 1,
+    borderBottomColor: '#f1f5f9',
   },
   categoryTopRow: {
     flexDirection: 'row',
@@ -433,16 +552,15 @@ const styles = StyleSheet.create({
   categoryLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    flex: 1,
   },
   categoryIcon: {
-    width: 42,
-    height: 42,
-    borderRadius: 14,
-    backgroundColor: '#f5f3ff',
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    backgroundColor: PRIMARY_SOFT,
     alignItems: 'center',
     justifyContent: 'center',
+    marginRight: 12,
   },
   categoryTitle: {
     fontSize: 15,
@@ -450,15 +568,14 @@ const styles = StyleSheet.create({
     color: TEXT,
   },
   categorySubtitle: {
-    marginTop: 2,
-    fontSize: 13,
+    fontSize: 12,
     color: MUTED,
+    marginTop: 2,
   },
   categoryPercent: {
-    fontSize: 15,
-    fontWeight: '800',
-    color: PURPLE,
-    marginLeft: 10,
+    fontSize: 13,
+    fontWeight: '700',
+    color: PRIMARY,
   },
   categoryProgressTrack: {
     height: 10,
@@ -466,33 +583,31 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     overflow: 'hidden',
     marginTop: 12,
+    marginBottom: 10,
   },
   categoryProgressFill: {
     height: '100%',
     borderRadius: 999,
   },
   categoryBottomRow: {
-    marginTop: 10,
     flexDirection: 'row',
     justifyContent: 'space-between',
-    gap: 12,
+    alignItems: 'center',
   },
   categoryMeta: {
-    fontSize: 13,
+    fontSize: 12,
     color: MUTED,
     fontWeight: '600',
   },
   remainingText: {
-    color: '#16a34a',
-    fontWeight: '700',
+    color: SUCCESS,
   },
   overBudgetText: {
-    color: '#ef4444',
-    fontWeight: '700',
+    color: DANGER,
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(17, 24, 39, 0.35)',
+    backgroundColor: 'rgba(15, 23, 42, 0.35)',
     justifyContent: 'flex-end',
   },
   modalCard: {
@@ -500,127 +615,128 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
     padding: 20,
-    maxHeight: '88%',
+    maxHeight: '82%',
   },
   modalTitle: {
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: '800',
     color: TEXT,
     marginBottom: 18,
   },
   inputLabel: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '700',
-    color: '#374151',
+    color: MUTED,
     marginBottom: 8,
   },
   mainInput: {
-    backgroundColor: '#f9fafb',
     borderWidth: 1,
     borderColor: BORDER,
-    borderRadius: 16,
+    backgroundColor: '#fff',
+    borderRadius: 14,
     paddingHorizontal: 14,
-    paddingVertical: 14,
+    paddingVertical: 12,
     fontSize: 16,
     color: TEXT,
-    marginBottom: 18,
+    marginBottom: 16,
   },
   modalScroll: {
-    maxHeight: 360,
+    maxHeight: 300,
   },
   modalScrollContent: {
-    paddingBottom: 8,
+    paddingBottom: 6,
   },
   inputRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingVertical: 10,
-    borderTopWidth: 1,
-    borderTopColor: '#f1f5f9',
+    borderBottomWidth: 1,
+    borderBottomColor: '#f1f5f9',
   },
   inputRowLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    flex: 1,
   },
   modalCategoryTitle: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '700',
     color: TEXT,
   },
   modalCategoryAmount: {
-    marginTop: 2,
-    fontSize: 13,
+    fontSize: 12,
     color: MUTED,
+    marginTop: 2,
   },
   percentInputWrap: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#f9fafb',
     borderWidth: 1,
     borderColor: BORDER,
-    borderRadius: 14,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    marginLeft: 10,
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    minWidth: 72,
+    justifyContent: 'center',
+    backgroundColor: '#fff',
   },
   percentInput: {
-    minWidth: 40,
-    textAlign: 'right',
-    fontSize: 16,
-    fontWeight: '700',
+    minWidth: 32,
+    textAlign: 'center',
+    paddingVertical: 8,
+    fontSize: 14,
     color: TEXT,
   },
   percentSign: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '700',
     color: MUTED,
-    marginLeft: 4,
+    marginLeft: 2,
   },
   summaryBox: {
-    marginTop: 14,
-    marginBottom: 16,
+    marginTop: 16,
     backgroundColor: '#f8fafc',
     borderRadius: 16,
     padding: 14,
+    borderWidth: 1,
+    borderColor: BORDER,
   },
   summaryText: {
-    fontSize: 15,
-    fontWeight: '800',
+    fontSize: 14,
+    fontWeight: '700',
     color: TEXT,
-    marginBottom: 4,
   },
   modalActions: {
     flexDirection: 'row',
+    marginTop: 18,
     gap: 12,
   },
   cancelButton: {
     flex: 1,
-    backgroundColor: '#f3f4f6',
-    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: BORDER,
+    borderRadius: 14,
     paddingVertical: 14,
     alignItems: 'center',
+    backgroundColor: '#fff',
   },
   cancelButtonText: {
-    color: '#374151',
-    fontSize: 15,
+    color: TEXT,
     fontWeight: '700',
+    fontSize: 15,
   },
   saveButton: {
     flex: 1,
-    backgroundColor: PURPLE,
-    borderRadius: 16,
+    backgroundColor: PRIMARY,
+    borderRadius: 14,
     paddingVertical: 14,
     alignItems: 'center',
   },
-  disabledButton: {
-    opacity: 0.45,
-  },
   saveButtonText: {
-    color: '#ffffff',
-    fontSize: 15,
+    color: '#fff',
     fontWeight: '800',
+    fontSize: 15,
+  },
+  disabledButton: {
+    opacity: 0.5,
   },
 });
