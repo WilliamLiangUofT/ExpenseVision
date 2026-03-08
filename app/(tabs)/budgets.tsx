@@ -35,9 +35,8 @@ type BudgetComparisonResponse = {
   categories: BudgetComparisonCategory[];
 };
 
-const BASE_URL = 'http://127.0.0.1:8000/api';
-// If using Expo Go on a physical phone, replace with your computer's local IP:
-// const BASE_URL = 'http://192.168.1.100:8000';
+const API_BASE = process.env.EXPO_PUBLIC_API_BASE_URL?.trim() || 'http://127.0.0.1:8000';
+const BASE_URL = `${API_BASE}/api`;
 
 const CATEGORY_ICONS: Record<
   string,

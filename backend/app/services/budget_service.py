@@ -1,6 +1,6 @@
 
-from backend.app.schema.budgets import BudgetCreate, BudgetUpdate
-from backend.app.supabase_client import get_supabase
+from app.schema.budgets import BudgetCreate, BudgetUpdate
+from app.supabase_client import get_supabase
 from datetime import date
 
 def create_budget_service(payload: BudgetCreate):
