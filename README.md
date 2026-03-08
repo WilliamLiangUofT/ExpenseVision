@@ -1,50 +1,89 @@
-# Welcome to your Expo app 👋
+# 💰 ExpenseVision
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+### AI-Powered Expense Tracking & Budget Intelligence
 
-## Get started
+ExpenseVision is a **full-stack mobile expense tracking application** that helps users automatically track spending, manage budgets, and gain insights into their financial habits.
 
-1. Install dependencies
+Users can scan receipts, automatically extract purchase data using AI, manage monthly budgets, and ask an AI assistant questions about their spending.
 
-   ```bash
-   npm install
-   ```
+The goal of ExpenseVision is to **eliminate manual expense tracking** and help users **make smarter financial decisions**.
 
-2. Start the app
+---
 
-   ```bash
-   npx expo start
-   ```
+# 🚀 Features
 
-In the output, you'll find options to open the app in a
+## 📷 AI Receipt Scanning
+Users can take a photo of a receipt and automatically extract structured transaction data.
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+The AI extracts:
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+- Merchant name
+- Transaction date
+- Category
+- Subtotal
+- Tax
+- Total
+- Itemized purchases
 
-## Get a fresh project
+This removes the need for manual expense entry.
 
-When you're ready, run:
+---
 
-```bash
-npm run reset-project
-```
+## 🧾 Manual Expense Entry
+Users can manually enter receipts if scanning is unavailable.
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+---
 
-## Learn more
+## 📊 Smart Budgeting System
+Users can create **monthly budgets** and allocate spending percentages across categories.
 
-To learn more about developing your project with Expo, look at the following resources:
+Supported categories include:
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+- Groceries
+- Dining
+- Transportation
+- Shopping
+- Entertainment
+- Travel
+- Utilities
+- Other
 
-## Join the community
+Each category tracks:
 
-Join our community of developers creating universal apps.
+- allocated budget
+- amount spent
+- remaining funds
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+---
+
+## 📈 Budget vs Spending Analytics
+
+ExpenseVision automatically compares **planned budget vs real spending**.
+
+Users can instantly see:
+
+- total monthly spending
+- category spending breakdown
+- remaining budget
+- overspending alerts
+
+---
+
+## 🤖 AI Financial Assistant
+
+ExpenseVision includes an **AI agent that answers questions about spending habits**.
+
+Users can ask questions like:
+
+- “Where am I overspending this month?”
+- “How can I save more money?”
+- “Which category do I spend the most on?”
+- “How much money do I have left in my budget?”
+
+The AI assistant analyzes the user's **real transaction and budget data** to provide personalized insights.
+
+---
+
+# 🧩 Full Stack Architecture
+
+ExpenseVision is built as a **full-stack system** consisting of a mobile frontend, backend API, database, and AI services.
