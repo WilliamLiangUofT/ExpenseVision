@@ -1,9 +1,13 @@
 // app/(tabs)/scan.tsx
 import { Feather, Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import {
+  ActivityIndicator,
+  Alert,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   SafeAreaView,
@@ -13,6 +17,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { extractReceipt, saveReceipt, type ReceiptExtracted } from '../../lib/api';
 
 export default function ScanScreen() {
   const [merchant, setMerchant] = useState('');
@@ -21,6 +26,65 @@ export default function ScanScreen() {
   const [subtotal, setSubtotal] = useState('0.00');
   const [tax, setTax] = useState('0.00');
   const [total, setTotal] = useState('0.00');
+
+  const [extracting, setExtracting] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [reviewModalVisible, setReviewModalVisible] = useState(false);
+  const [extracted, setExtracted] = useState<ReceiptExtracted | null>(null);
+
+  const pickImageAndExtract = useCallback(async (useCamera: boolean) => {
+    if (useCamera) {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission needed', 'Camera access is required to take a photo.');
+        return;
+      }
+    } else {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission needed', 'Photo library access is required to upload.');
+        return;
+      }
+    }
+
+    const result = useCamera
+      ? await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 0.8 })
+      : await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.8 });
+
+    if (result.canceled || !result.assets?.[0]) return;
+
+    const asset = result.assets[0];
+    const uri = asset.uri;
+    const mimeType = asset.mimeType ?? 'image/jpeg';
+
+    setExtracting(true);
+    try {
+      const data = await extractReceipt(uri, mimeType);
+      setExtracted(data);
+      setReviewModalVisible(true);
+    } catch (err: any) {
+      const message = err.response?.data?.detail ?? err.message ?? 'Extract failed';
+      Alert.alert('Extract failed', typeof message === 'string' ? message : JSON.stringify(message));
+    } finally {
+      setExtracting(false);
+    }
+  }, []);
+
+  const handleApprove = useCallback(async () => {
+    if (!extracted) return;
+    setSaving(true);
+    try {
+      await saveReceipt(extracted);
+      setReviewModalVisible(false);
+      setExtracted(null);
+      Alert.alert('Saved', 'Receipt saved successfully.');
+    } catch (err: any) {
+      const message = err.response?.data?.detail ?? err.message ?? 'Save failed';
+      Alert.alert('Save failed', typeof message === 'string' ? message : JSON.stringify(message));
+    } finally {
+      setSaving(false);
+    }
+  }, [extracted]);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -54,16 +118,24 @@ export default function ScanScreen() {
             <View style={styles.captureRow}>
               <Pressable
                 style={({ pressed }) => [styles.captureOption, styles.captureOptionActive, pressed && styles.pressed]}
-                onPress={() => {}}
+                onPress={() => pickImageAndExtract(true)}
+                disabled={extracting}
               >
-                <Feather name="camera" size={40} color="#a020f0" />
+                {extracting ? (
+                  <ActivityIndicator size="large" color="#a020f0" style={styles.captureLoader} />
+                ) : (
+                  <Feather name="camera" size={40} color="#a020f0" />
+                )}
                 <Text style={styles.captureTitle}>Take Photo</Text>
-                <Text style={styles.captureSubtext}>Open camera to capture receipt</Text>
+                <Text style={styles.captureSubtext}>
+                  {extracting ? 'Extracting…' : 'Open camera to capture receipt'}
+                </Text>
               </Pressable>
 
               <Pressable
                 style={({ pressed }) => [styles.captureOption, pressed && styles.pressed]}
-                onPress={() => {}}
+                onPress={() => pickImageAndExtract(false)}
+                disabled={extracting}
               >
                 <Feather name="upload" size={40} color="#9ca3af" />
                 <Text style={styles.captureTitle}>Upload Photo</Text>
@@ -71,6 +143,77 @@ export default function ScanScreen() {
               </Pressable>
             </View>
           </View>
+
+          {/* Review extracted receipt modal */}
+          <Modal
+            visible={reviewModalVisible}
+            transparent
+            animationType="fade"
+            onRequestClose={() => setReviewModalVisible(false)}
+          >
+            <Pressable style={styles.modalOverlay} onPress={() => setReviewModalVisible(false)}>
+              <Pressable style={styles.modalCard} onPress={(e) => e.stopPropagation()}>
+                <Text style={styles.modalTitle}>Review receipt</Text>
+                <Text style={styles.modalSubtitle}>Confirm and save to database</Text>
+                {extracted && (
+                  <ScrollView style={styles.modalScroll} showsVerticalScrollIndicator={false}>
+                    <View style={styles.reviewRow}>
+                      <Text style={styles.reviewLabel}>Merchant</Text>
+                      <Text style={styles.reviewValue}>{extracted.merchant ?? '—'}</Text>
+                    </View>
+                    <View style={styles.reviewRow}>
+                      <Text style={styles.reviewLabel}>Date</Text>
+                      <Text style={styles.reviewValue}>{extracted.date_of_transaction ?? '—'}</Text>
+                    </View>
+                    <View style={styles.reviewRow}>
+                      <Text style={styles.reviewLabel}>Category</Text>
+                      <Text style={styles.reviewValue}>{extracted.category ?? '—'}</Text>
+                    </View>
+                    <View style={styles.reviewRow}>
+                      <Text style={styles.reviewLabel}>Subtotal</Text>
+                      <Text style={styles.reviewValue}>{extracted.subtotal ?? '—'}</Text>
+                    </View>
+                    <View style={styles.reviewRow}>
+                      <Text style={styles.reviewLabel}>Tax</Text>
+                      <Text style={styles.reviewValue}>{extracted.tax ?? '—'}</Text>
+                    </View>
+                    <View style={styles.reviewRow}>
+                      <Text style={styles.reviewLabel}>Total</Text>
+                      <Text style={styles.reviewValue}>{extracted.total ?? '—'}</Text>
+                    </View>
+                    {extracted.items_purchased?.length > 0 && (
+                      <View style={styles.reviewRow}>
+                        <Text style={styles.reviewLabel}>Items</Text>
+                        <Text style={styles.reviewValue}>
+                          {extracted.items_purchased.map((i) => i.name).join(', ')}
+                        </Text>
+                      </View>
+                    )}
+                  </ScrollView>
+                )}
+                <View style={styles.modalActions}>
+                  <Pressable
+                    style={[styles.modalButton, styles.modalButtonCancel]}
+                    onPress={() => setReviewModalVisible(false)}
+                    disabled={saving}
+                  >
+                    <Text style={styles.modalButtonCancelText}>Cancel</Text>
+                  </Pressable>
+                  <Pressable
+                    style={[styles.modalButton, styles.modalButtonApprove]}
+                    onPress={handleApprove}
+                    disabled={saving}
+                  >
+                    {saving ? (
+                      <ActivityIndicator size="small" color="#fff" />
+                    ) : (
+                      <Text style={styles.modalButtonApproveText}>Approve & Save</Text>
+                    )}
+                  </Pressable>
+                </View>
+              </Pressable>
+            </Pressable>
+          </Modal>
 
           {/* Manual Entry card – form with Add Receipt at the end */}
           <View style={[styles.statCard, styles.manualCard]}>
@@ -259,6 +402,85 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#6b7280',
     marginTop: 4,
+  },
+  captureLoader: {
+    marginVertical: 8,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  modalCard: {
+    backgroundColor: 'white',
+    borderRadius: 20,
+    padding: 24,
+    width: '100%',
+    maxWidth: 400,
+    maxHeight: '80%',
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#111827',
+    marginBottom: 4,
+  },
+  modalSubtitle: {
+    fontSize: 14,
+    color: '#6b7280',
+    marginBottom: 16,
+  },
+  modalScroll: {
+    maxHeight: 240,
+    marginBottom: 16,
+  },
+  reviewRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 10,
+    gap: 12,
+  },
+  reviewLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#6b7280',
+    minWidth: 80,
+  },
+  reviewValue: {
+    fontSize: 14,
+    color: '#111827',
+    flex: 1,
+  },
+  modalActions: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  modalButton: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 48,
+  },
+  modalButtonCancel: {
+    backgroundColor: '#f3f4f6',
+  },
+  modalButtonCancelText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#4b5563',
+  },
+  modalButtonApprove: {
+    backgroundColor: '#a020f0',
+  },
+  modalButtonApproveText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
   },
   manualCard: {
     marginBottom: 0,

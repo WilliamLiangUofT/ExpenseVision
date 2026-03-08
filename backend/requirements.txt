@@ -1,9 +1,10 @@
 # FastAPI backend with Supabase (PostgreSQL)
 fastapi==0.115.6
 uvicorn[standard]==0.32.1
-supabase==2.10.0
+supabase==2.28.0
 python-dotenv==1.0.1
 python-multipart
 python-dotenv
 pydantic
 pydantic-settings
+google-genai==1.66.0

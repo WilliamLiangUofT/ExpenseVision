@@ -2,7 +2,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.app.routers import receipts, budgets
+from app.routers import receipts, budgets, chat
 
 app = FastAPI(
     title="ExpenseVision API",
@@ -10,7 +10,11 @@ app = FastAPI(
     version="1.0.0",
 )
 
-# CORS configuration so react native can call the api
+@app.middleware("http")
+async def log_requests(request, call_next):
+    print(f"{request.method} {request.url.path}")
+    return await call_next(request)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -21,4 +25,5 @@ app.add_middleware(
 
 app.include_router(receipts.router, prefix="/api/receipts", tags=["receipts"])
 app.include_router(budgets.router, prefix = "/api/budgets", tags=["budgets"])
+app.include_router(chat.router, prefix="/api/chat", tags=["chat"])
 
