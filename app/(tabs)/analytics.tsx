@@ -31,7 +31,7 @@ export default function AnalyticsScreen() {
             <View style={styles.logoBox}>
               <Text style={styles.logoEmoji}>💰</Text>
             </View>
-            <Text style={styles.logoText}>SmartSpend</Text>
+            <Text style={styles.logoText}>ExpenseVision</Text>
           </View>
           <Ionicons name="calendar-outline" size={22} color="#6b7280" />
         </View>
