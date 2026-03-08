@@ -1,11 +1,11 @@
 from fastapi import APIRouter, HTTPException
-from backend.app.schema.budgets import (
+from app.schema.budgets import (
     BudgetCreate,
     BudgetUpdate,
     BudgetResponse,
     BudgetComparisonResponse
 )
-from backend.app.services.budget_service import (
+from app.services.budget_service import (
     create_budget_service,
     get_budget_by_month_service,
     update_budget_service,
