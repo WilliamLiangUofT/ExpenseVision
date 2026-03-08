@@ -69,3 +69,19 @@ export async function saveReceipt(payload: ReceiptExtracted): Promise<ReceiptCre
   });
   return data;
 }
+
+// --- Chat types and API ---
+
+export interface ChatResponse {
+  response: string;
+}
+
+/** Send a prompt to the AI chat and receive an LLM response. */
+export async function chat(prompt: string): Promise<ChatResponse> {
+  const { data } = await api.post<ChatResponse>(
+    '/api/chat',
+    { prompt },
+    { headers: { 'Content-Type': 'application/json' } }
+  );
+  return data;
+}

@@ -2,7 +2,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routers import receipts
+from app.routers import chat, receipts
 
 app = FastAPI(
     title="ExpenseVision API",
@@ -24,4 +24,5 @@ app.add_middleware(
 )
 
 app.include_router(receipts.router, prefix="/api/receipts", tags=["receipts"])
+app.include_router(chat.router, prefix="/api/chat", tags=["chat"])
 
