@@ -1,7 +1,7 @@
 """Supabase client singleton for database access."""
 from supabase import Client, create_client
 
-from app.config import SUPABASE_SERVICE_ROLE_KEY, SUPABASE_URL
+from backend.app.config import SUPABASE_SERVICE_ROLE_KEY, SUPABASE_URL
 
 
 _client: Client | None = None

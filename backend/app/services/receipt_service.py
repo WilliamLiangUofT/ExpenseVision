@@ -3,6 +3,7 @@ import json
 import re
 from fastapi import HTTPException, UploadFile
 from pydantic import ValidationError
+
 from app.supabase_client import get_supabase
 from app.schema.receipt import ReceiptCreateResponse, ReceiptExtracted
 from google import genai
